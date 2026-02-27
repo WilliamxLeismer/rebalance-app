@@ -74,11 +74,11 @@ pub fn run(cfg: &Config, months: usize, contribution_override: Option<f64>) -> R
             allocations_after: allocs_after,
         });
 
-        // 5. Advance portfolio state for next period
-        current_assets = advance_state(result);
+        // 5. Advance portfolio state for next period (apply growth then contribution)
+        current_assets = advance_state(result, cfg);
     }
 
-    display::print_projection_table(&rows, &categories, contribution, months);
+    display::print_projection_table(&rows, &categories, contribution, months, &cfg.growth_rates);
     Ok(())
 }
 
@@ -144,13 +144,15 @@ fn rebuild_with_target(
         .collect()
 }
 
-/// Advance the portfolio state by adding each asset's contribution to its value.
-/// Returns a fresh Vec<PortfolioAsset> ready for the next period.
-fn advance_state(result: Vec<PortfolioAsset>) -> Vec<PortfolioAsset> {
+/// Advance the portfolio state for the next period.
+/// Applies market growth to the current value first, then adds the contribution.
+fn advance_state(result: Vec<PortfolioAsset>, cfg: &Config) -> Vec<PortfolioAsset> {
     result
         .iter()
         .map(|a| {
-            let new_value = a.value() + a.contribution_amount();
+            let growth = cfg.period_growth_rate(a.name());
+            let grown_value = a.value() * (1.0 + growth);
+            let new_value = grown_value + a.contribution_amount();
             // target_pct will be updated by rebuild_with_target next iteration
             PortfolioAsset::new(a.name().to_string(), new_value, a.target_pct() / 100.0)
         })

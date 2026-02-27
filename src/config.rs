@@ -17,6 +17,10 @@ pub struct Config {
     #[serde(default)]
     pub blend_funds: HashMap<String, BlendFund>,
     pub targets: TargetsConfig,
+    /// Expected annual returns per category (%), used by `project` only.
+    /// Optional — omit the section or set rates to 0.0 to disable.
+    #[serde(default)]
+    pub growth_rates: HashMap<String, f64>,
 }
 
 /// A fund whose value is split across multiple asset categories
@@ -265,6 +269,13 @@ impl Config {
     /// Returns the contribution amount, optionally overridden by the caller.
     pub fn contribution(&self, override_amount: Option<f64>) -> f64 {
         override_amount.unwrap_or(self.settings.contribution_per_paycheck)
+    }
+
+    /// Converts an annual growth rate (%) for `category` into a per-period
+    /// (15-day) multiplier.  Returns 0.0 if the category has no rate set.
+    pub fn period_growth_rate(&self, category: &str) -> f64 {
+        let annual_pct = self.growth_rates.get(category).copied().unwrap_or(0.0);
+        (1.0 + annual_pct / 100.0).powf(15.0 / 365.0) - 1.0
     }
 }
 

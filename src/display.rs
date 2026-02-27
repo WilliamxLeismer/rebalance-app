@@ -183,13 +183,28 @@ pub fn print_projection_table(
     categories: &[String],
     contribution: f64,
     months: usize,
+    growth_rates: &HashMap<String, f64>,
 ) {
     println!(
-        "\nProjection — {} contributions over {} month(s)  (contribution: {})\n",
+        "\nProjection — {} contributions over {} month(s)  (contribution: {})",
         rows.len(),
         months,
         fmt_dollars(contribution),
     );
+
+    // Show growth rate assumptions if any are set
+    let active_rates: Vec<String> = {
+        let mut cats: Vec<&String> = growth_rates.keys().collect();
+        cats.sort();
+        cats.iter()
+            .filter(|k| growth_rates[k.as_str()] != 0.0)
+            .map(|k| format!("{} {:.1}%/yr", k, growth_rates[k.as_str()]))
+            .collect()
+    };
+    if !active_rates.is_empty() {
+        println!("Growth assumptions:  {}", active_rates.join("  |  "));
+    }
+    println!();
 
     // Header
     let mut header = "Period\tDate".to_string();
