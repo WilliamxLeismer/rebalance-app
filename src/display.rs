@@ -140,12 +140,14 @@ pub fn print_account_breakdown(
         let mut funds = breakdown[acct].clone();
         funds.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-        let entries: Vec<String> = funds
-            .iter()
-            .map(|(name, val)| format!("{} {}", name, fmt_dollars(*val)))
-            .collect();
+        let total: f64 = funds.iter().map(|(_, v)| v).sum();
+        println!("  {}  ({})", acct, fmt_dollars(total));
 
-        println!("  {}:  {}", acct, entries.join("  |  "));
+        let mut buf = String::new();
+        for (name, val) in &funds {
+            buf.push_str(&format!("    {}\t{}\n", name, fmt_dollars(*val)));
+        }
+        print!("{}", tabwrite(&buf));
     }
 }
 

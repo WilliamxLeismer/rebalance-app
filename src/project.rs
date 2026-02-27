@@ -40,8 +40,11 @@ pub fn run(cfg: &Config, months: usize, contribution_override: Option<f64>) -> R
         }
         current_assets = rebuild_with_target(&current_assets, &target);
 
-        // 3. Run one rebalance step
-        let result = new_lazy_rebalance(contribution, current_assets.clone());
+        // 3. Run one rebalance step (zero-target assets excluded to avoid ÷0)
+        let (mut zero_target, nonzero): (Vec<_>, Vec<_>) =
+            current_assets.clone().into_iter().partition(|a| a.target_pct() == 0.0);
+        let mut result = new_lazy_rebalance(contribution, nonzero);
+        result.append(&mut zero_target);
 
         // 4. Record this period's output
         let period_date = period_date(start_date, period);
@@ -81,10 +84,13 @@ pub fn run(cfg: &Config, months: usize, contribution_override: Option<f64>) -> R
 
 // ── Target interpolation ──────────────────────────────────────────────────────
 
-/// Linearly interpolate between start and end targets.
-/// `t` goes from 0.0 (period 0) to 1.0 (final period).
+/// Linearly interpolate between start and end targets based on the actual
+/// calendar dates in the config, not the projection period count.
+///
+/// `t` is the fraction of the way from `targets.start.date` to
+/// `targets.end.date` that this period's date falls on (clamped 0.0–1.0).
 /// If there is no end target, returns start allocations unchanged.
-fn interpolate_targets(cfg: &Config, period: usize, total_periods: usize) -> TargetSnapshot {
+fn interpolate_targets(cfg: &Config, period: usize, _total_periods: usize) -> TargetSnapshot {
     let start = &cfg.targets.start;
 
     let end = match &cfg.targets.end {
@@ -92,11 +98,14 @@ fn interpolate_targets(cfg: &Config, period: usize, total_periods: usize) -> Tar
         None => return start.clone(),
     };
 
-    if total_periods <= 1 {
+    let today = Local::now().date().naive_local();
+    let period_date = today + Duration::days(15 * period as i64);
+    let total_days = (end.date - start.date).num_days();
+    if total_days <= 0 {
         return start.clone();
     }
-
-    let t = period as f64 / (total_periods - 1) as f64;
+    let elapsed = (period_date - start.date).num_days();
+    let t = (elapsed as f64 / total_days as f64).clamp(0.0, 1.0);
 
     let mut allocations: HashMap<String, f64> = HashMap::new();
     for (cat, &start_pct) in &start.allocations {

@@ -21,8 +21,12 @@ pub fn run(cfg: &Config, contribution_override: Option<f64>) -> Result<()> {
     let totals = portfolio::aggregate(&holdings, cfg);
     let assets = portfolio::to_portfolio_assets(&totals, &cfg.targets.start);
 
-    // Run one rebalance step
-    let balanced = new_lazy_rebalance(contribution, assets);
+    // Zero-target categories (e.g. cash = 0.0) cause division by zero in the
+    // algorithm; split them out, run the rebalancer on the rest, then merge back.
+    let (mut zero_target, nonzero): (Vec<_>, Vec<_>) =
+        assets.into_iter().partition(|a| a.target_pct() == 0.0);
+    let mut balanced = new_lazy_rebalance(contribution, nonzero);
+    balanced.append(&mut zero_target);
 
     // Display
     display::print_status_table(&balanced, cfg.settings.drift_warn_threshold, contribution);

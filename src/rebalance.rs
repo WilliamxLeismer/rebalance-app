@@ -3,7 +3,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::io::Write;
-use std::iter::FromIterator;
 
 // 3rd-party imports
 
@@ -688,7 +687,7 @@ pub fn new_lazy_rebalance(
 
             // TODO: debug
             {
-                let mut amount_added =
+                let amount_added =
                     if distributed_contribution.abs() <= amount_left_to_contribute.abs() {
                         distributed_contribution.clone()
                     } else {
