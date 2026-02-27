@@ -2,3 +2,8 @@ assets/
 target/
 etc/
 **/*.rs.bk
+
+# Personal financial data — never commit these
+accounts/
+data/
+config.toml

@@ -483,6 +483,61 @@ pub struct PortfolioAsset {
     contribution: Option<BigRational>,
 }
 
+impl PortfolioAsset {
+    /// Construct a new asset for the rebalancing algorithm.
+    /// `target_allocation_decimal` is in the range 0.0–1.0 (e.g. 0.50 for 50%).
+    pub fn new(name: String, value: f64, target_allocation_decimal: f64) -> Self {
+        PortfolioAsset {
+            asset: NewAsset {
+                name,
+                actual_value: BigRational::from_f64(value).unwrap(),
+                actual_allocation_percent: BigRational::zero(),
+                target_allocation_percent: BigRational::from_f64(target_allocation_decimal)
+                    .unwrap(),
+            },
+            target_value: None,
+            fractional_deviation: None,
+            contribution: None,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.asset.name
+    }
+
+    /// Current dollar value of this asset.
+    pub fn value(&self) -> f64 {
+        to_f64(&self.asset.actual_value)
+    }
+
+    /// Current allocation as a percentage (0–100).
+    pub fn actual_pct(&self) -> f64 {
+        to_f64(&self.asset.actual_allocation_percent) * 100.0
+    }
+
+    /// Target allocation as a percentage (0–100).
+    pub fn target_pct(&self) -> f64 {
+        to_f64(&self.asset.target_allocation_percent) * 100.0
+    }
+
+    /// Dollar amount to contribute this period (0.0 if not yet calculated).
+    pub fn contribution_amount(&self) -> f64 {
+        self.contribution.as_ref().map_or(0.0, |c| to_f64(c))
+    }
+
+    /// Target dollar value after the contribution.
+    pub fn target_value_amount(&self) -> f64 {
+        self.target_value.as_ref().map_or(0.0, |v| to_f64(v))
+    }
+
+    /// Fractional deviation from target (negative = under, positive = over).
+    pub fn drift(&self) -> f64 {
+        self.fractional_deviation
+            .as_ref()
+            .map_or(0.0, |d| to_f64(d))
+    }
+}
+
 pub fn convert_old_portfolio(old_assets: Vec<Asset>) -> Vec<PortfolioAsset> {
     old_assets
         .into_iter()
@@ -697,21 +752,11 @@ pub fn new_lazy_rebalance(
 
         
 
-        println!(
-            "contribution for {}: {}",
-            portfolio_asset.asset.name,
-            to_f64(&contribution)
+        debug_assert!(
+            *debug_contributions.get(&portfolio_asset.asset.name).unwrap() == contribution,
+            "contribution mismatch for {}",
+            portfolio_asset.asset.name
         );
-        let portion = &debug_contributions
-            .get(&portfolio_asset.asset.name)
-            .unwrap();
-        println!(
-            "debug contribution for {}: {}",
-            portfolio_asset.asset.name,
-            to_f64(&portion)
-        );
-
-        assert!(*portion.clone() == contribution.clone());
 
         portfolio_asset.contribution = Some(contribution);
     }
