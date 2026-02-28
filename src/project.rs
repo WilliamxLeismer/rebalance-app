@@ -32,7 +32,7 @@ pub fn run(cfg: &Config, months: usize, contribution_override: Option<f64>) -> R
 
     for period in 0..periods {
         // 1. Compute interpolated target for this period
-        let target = interpolate_targets(cfg, period, periods);
+        let target = interpolate_targets(cfg, period, start_date);
 
         // 2. Update each asset's target allocation
         for asset in &current_assets {
@@ -90,7 +90,7 @@ pub fn run(cfg: &Config, months: usize, contribution_override: Option<f64>) -> R
 /// `t` is the fraction of the way from `targets.start.date` to
 /// `targets.end.date` that this period's date falls on (clamped 0.0–1.0).
 /// If there is no end target, returns start allocations unchanged.
-fn interpolate_targets(cfg: &Config, period: usize, _total_periods: usize) -> TargetSnapshot {
+fn interpolate_targets(cfg: &Config, period: usize, projection_start: NaiveDate) -> TargetSnapshot {
     let start = &cfg.targets.start;
 
     let end = match &cfg.targets.end {
@@ -98,8 +98,7 @@ fn interpolate_targets(cfg: &Config, period: usize, _total_periods: usize) -> Ta
         None => return start.clone(),
     };
 
-    let today = Local::now().date().naive_local();
-    let period_date = today + Duration::days(15 * period as i64);
+    let period_date = projection_start + Duration::days(15 * period as i64);
     let total_days = (end.date - start.date).num_days();
     if total_days <= 0 {
         return start.clone();
@@ -216,7 +215,9 @@ date = "2026-01-01"
     fn interpolate_at_zero() {
         let cfg = make_cfg(&[("stocks", 80.0), ("bonds", 20.0)],
                            Some(&[("stocks", 60.0), ("bonds", 40.0)]));
-        let result = interpolate_targets(&cfg, 0, 10);
+        // Projecting from exactly the start date → t = 0 → start allocations
+        let start = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let result = interpolate_targets(&cfg, 0, start);
         assert!((result.allocations["stocks"] - 80.0).abs() < 0.01);
         assert!((result.allocations["bonds"]  - 20.0).abs() < 0.01);
     }
@@ -225,7 +226,9 @@ date = "2026-01-01"
     fn interpolate_at_end() {
         let cfg = make_cfg(&[("stocks", 80.0), ("bonds", 20.0)],
                            Some(&[("stocks", 60.0), ("bonds", 40.0)]));
-        let result = interpolate_targets(&cfg, 9, 10);
+        // targets.end.date = "2027-01-01"; projecting from that date → t = 1.0
+        let projection_start = NaiveDate::from_ymd_opt(2027, 1, 1).unwrap();
+        let result = interpolate_targets(&cfg, 0, projection_start);
         assert!((result.allocations["stocks"] - 60.0).abs() < 0.5);
         assert!((result.allocations["bonds"]  - 40.0).abs() < 0.5);
     }
@@ -234,8 +237,9 @@ date = "2026-01-01"
     fn interpolate_midpoint() {
         let cfg = make_cfg(&[("stocks", 80.0), ("bonds", 20.0)],
                            Some(&[("stocks", 60.0), ("bonds", 40.0)]));
-        let result = interpolate_targets(&cfg, 5, 10);
-        // t = 5/9 ≈ 0.556: stocks ≈ 80 - 0.556*20 ≈ 68.9
+        // Halfway through 2026-01-01 → 2027-01-01 range
+        let mid = NaiveDate::from_ymd_opt(2026, 7, 2).unwrap();
+        let result = interpolate_targets(&cfg, 0, mid);
         assert!(result.allocations["stocks"] > 60.0);
         assert!(result.allocations["stocks"] < 80.0);
     }
@@ -243,7 +247,8 @@ date = "2026-01-01"
     #[test]
     fn interpolate_no_end_returns_start() {
         let cfg = make_cfg(&[("stocks", 80.0), ("bonds", 20.0)], None);
-        let result = interpolate_targets(&cfg, 5, 10);
+        let start = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let result = interpolate_targets(&cfg, 5, start);
         assert!((result.allocations["stocks"] - 80.0).abs() < 0.01);
     }
 
@@ -254,7 +259,8 @@ date = "2026-01-01"
             PortfolioAsset::new("bonds".to_string(),  2000.0, 0.20),
         ];
         let result = new_lazy_rebalance(1000.0, assets);
-        let next = advance_state(result);
+        let cfg = make_cfg(&[("stocks", 80.0), ("bonds", 20.0)], None);
+        let next = advance_state(result, &cfg);
         let total: f64 = next.iter().map(|a| a.value()).sum();
         assert!((total - 11000.0).abs() < 0.01);
     }
@@ -263,8 +269,9 @@ date = "2026-01-01"
     fn interpolate_normalises_to_100() {
         let cfg = make_cfg(&[("stocks", 80.0), ("bonds", 20.0)],
                            Some(&[("stocks", 60.0), ("bonds", 40.0)]));
+        let start = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
         for period in 0..10 {
-            let result = interpolate_targets(&cfg, period, 10);
+            let result = interpolate_targets(&cfg, period, start);
             let sum: f64 = result.allocations.values().sum();
             assert!((sum - 100.0).abs() < 0.001);
         }
